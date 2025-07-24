@@ -1,0 +1,364 @@
+import math
+
+
+
+function hollow:load:
+    scoreboard objectives add hp_timer dummy
+    scoreboard objectives add hp_dist dummy
+    scoreboard objectives add hp_state dummy
+function hollow:tick:
+    execute as @a[tag=hp_caster] at @s run function hollow:hollow_purple_charge
+    execute as @e[tag=hp_projectile] at @s run function hollow:hollow_purple_fire
+
+function hollow:hollow_purple_init:
+    tag @s add hp_caster
+    effect give @s slowness 10 255 true
+    scoreboard players set @s hp_timer 0
+    scoreboard players set @s hp_state 0
+
+function hollow:hollow_purple_charge:
+
+    scoreboard players add @s hp_timer 1
+
+    # Charge phase
+    execute if score @s hp_state matches 0:
+        #execute at @s run particle dust 0 0 1 1.2 ^-1 ^1.5 ^2 0 0 0 0 1 force
+        #execute at @s run particle dust 1 0 0 1.2 ^1 ^1.5 ^2 0 0 0 0 1 force
+        execute at @s run playsound minecraft:item.trident.return master @a[distance=..15] ~ ~ ~ 7 1 1
+        
+        for frame in range(31):  # from 0 to 30
+            execute if score @s hp_timer matches frame:
+                offset = 1.5 * (1 - frame / 30)
+
+                execute at @s run particle dust 0 0 1 1.2 ^-offset ^1.5 ^2 0 0 0 0 1 force  
+                execute at @s run particle dust 1 0 0 1.2 ^offset ^1.5 ^2 0 0 0 0 1 force   
+          
+
+    # Collision phase
+    
+    execute if score @s hp_timer matches 30:
+        execute at @s run particle traveloptics:water_bubble ^ ^1.5 ^1 0 0 0 0.1 25 force
+        execute at @s run playsound traveloptics:hydroshot_impact master @a[distance=..15] ~ ~ ~ 1 2
+        execute at @s run particle dust 0.5 0 0.5 2 ^ ^1.5 ^3 0 0 0 0 1 force
+        
+        scoreboard players set @s hp_state 1
+
+    # Purple phase
+    execute if score @s hp_state matches 1:
+        execute at @s run particle dust 0.5 0 0.5 2 ^ ^1.5 ^3 0 0 0 0 1 force
+        execute if score @s hp_timer matches 100:
+            execute at @s run playsound traveloptics:spectral_blink_success master @a[distance=..15] ~ ~ ~ 10 0.8 1
+            scoreboard players set @s hp_state 2
+            scoreboard players set @s hp_timer 0
+
+    # Launch phase
+    execute if score @s hp_state matches 2:
+        execute if score @s hp_timer matches 20:
+            execute rotated as @s run summon minecraft:armor_stand ^ ^1 ^1 {Tags:["hp_projectile"],NoGravity:1b,Invisible:1b,Marker:1b}
+            tp @e[tag=hp_projectile] @s
+            tp @e[tag=hp_projectile] ^ ^ ^4
+            scoreboard players set @s hp_state 3
+            effect clear @s slowness
+            tag @s remove hp_caster
+            execute at @s run playsound traveloptics:blast_stage_one master @a[distance=..15] ~ ~ ~ 10 0.8 1
+
+function hollow:hollow_purple_fire:
+    
+    execute if score @e[type=minecraft:player, sort=nearest,limit=1] hp_state matches 3:
+        tp @e[tag=hp_projectile,limit=1,sort=nearest] ^ ^ ^0.8
+        scoreboard players add @s hp_dist 1
+        
+        for theta in range(0, 180, 20):    # vertical angle
+            for phi in range(0, 360, 20):  # horizontal angle
+                r = 2.5                               # sphere radius
+                x = r * math.sin(math.radians(theta)) * math.cos(math.radians(phi))
+                y = r * math.cos(math.radians(theta))
+                z = r * math.sin(math.radians(theta)) * math.sin(math.radians(phi))
+                fill ~ ~ ~ ~x ~y ~z air destroy
+                particle dust 0.5 0 0.5 6 ~x ~y ~z 0 0 0 0 0 force
+        
+        execute as @e[distance=..2.5,tag=!hp_projectile,tag=!hp_caster] run kill @s
+
+        execute if score @s hp_dist matches 50 run kill @s
+
+
+
+
+function my_particle:spawn_slash_stand:
+    summon armor_stand ~ ~1 ~ {
+        Invisible:1b,
+        Marker:1b,
+        NoGravity:1b,
+        Tags:["rotating_slash"],
+        Invulnerable:1b
+    }
+    scoreboard objectives add slash_timer dummy
+    scoreboard players set @s slash_timer 0
+
+
+slash_damage = 6
+function my_particle:rotate_slash:
+    scoreboard players add @s slash_timer 1
+    square_size = 2
+    frames = 40
+    total_steps = frames * square_size
+
+    for frame in range(total_steps + 1):
+        execute if score @s slash_timer matches frame:
+            if frame <= total_steps / 4:
+                execute as @s run tp @s ^square_size ^ ^
+
+            elif frame > total_steps / 4 and frame <= total_steps / 2:
+                execute as @s run tp @s ^ ^ ^square_size
+
+            elif frame > total_steps / 2 and frame <= total_steps * 3 / 4:
+                execute as @s run tp @s ^-square_size ^ ^
+
+            elif frame > total_steps * 3 / 4 and frame <= total_steps:
+                execute as @s run tp @s ^ ^ ^-square_size
+            
+    execute if score @s slash_timer matches total_steps run scoreboard players set @s slash_timer 0
+
+    # Particles & Damage
+    particle sweep_attack ~ ~1 ~ 0 0 0 0 5 force
+    execute at @s run damage @p[distance=..5,tag=!rotating_slash] slash_damage generic
+
+
+
+
+
+
+
+function my_particle:test:
+    tag @s add support_circle
+    scoreboard players add @s timer 1
+    for frame in range(40):
+        execute if score @s timer matches frame:
+            for i in range (100):
+                angle = 2*math.pi / 100 * i
+                radius = 7
+                x = radius * math.sin(angle)
+                z = radius * math.cos(angle)
+
+                glowiness = 0.5 + 0.5 * math.sin(frame * 2 * math.pi / 40)
+                particle dust glowiness 0.0 0.0 1.0 ~x ~ ~z 0 0 0 0.0 1
+             execute at @s run effect give @e[distance=..7,tag=!support_circle,tag=!librarian,tag=!support] minecraft:weakness 2 0 true
+             execute at @s run effect give @e[distance=..7,tag=librarian] minecraft:resistance 2 2 true
+             execute at @s run effect give @e[distance=..7,tag=librarian] minecraft:regeneration 2 0 true
+             execute at @s run kill @e[type=minecraft:arrow,distance=..7]
+             execute as @e[tag=support] at @s run tp @e[tag=support] ^ ^ ^0.1 facing entity @e[tag=librarian,limit=1,distance=3..6]
+               
+    execute if score @s timer matches 40 run scoreboard players set @s timer 0
+    tag @s remove support_circle
+    
+
+
+function my_particle:main_tick:
+    execute as @e[type=skeleton,tag=support] at @s run function my_particle:test
+    execute as @e[tag=rotating_slash] at @s run function my_particle:rotate_slash
+    
+
+append function_tag minecraft:load {
+    "values" : [
+        "my_particle:load",
+        "my_particle2:load"
+
+    ]
+}
+append function_tag minecraft:tick {
+    "values" : [
+        "my_particle:main_tick",
+        "hollow:tick"
+    ]
+}
+
+
+function my_particle:load:
+    scoreboard objectives add timer dummy
+
+function my_particle:anim:
+    scoreboard players add #ticker timer 1
+    execute if score #ticker timer matches 1 run particle flame ~ ~ ~
+    execute if score #ticker timer matches 2 run particle flame ~1 ~ ~
+    execute if score #ticker timer matches 3 run particle flame ~2 ~ ~
+    execute if score #ticker timer matches 4 run particle flame ~3 ~ ~
+    execute if score #ticker timer matches 5 run particle flame ~4 ~ ~
+    execute if score #ticker timer matches 5 run scoreboard players set #ticker timer 0
+
+
+function my_transform:start:
+    tag @s add transforming
+    scoreboard players set @s transform_timer 0
+    schedule function my_transform:beam_effect 1t
+
+function my_transform:beam_effect:
+    execute as @a[tag=transforming] at @s run scoreboard players add @s transform_timer 1
+
+    # Define height per segment and total segments
+    height_per_segment = 3
+    total_segments = 10  # total duration 10 * 20 ticks = 200 ticks max
+
+    # For loop over segments
+    for i in range(1, total_segments + 1):  # 1 to 10 inclusive
+        start_tick = (i - 1) * 20 + 1
+        end_tick = i * 20
+
+        # If transform_timer in this segment, fill the corresponding vertical section
+        f"execute as @a[tag=transforming] at @s if score @s transform_timer matches start_tick..end_tick run fill ~-3 ~{(i-1)*height_per_segment} ~-3 ~3 ~{i*height_per_segment} ~3 minecraft:light[level=15] replace air"
+
+    # Spawn particles while transforming (for all players tagged)
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches 1..200 run particle dust 0 0 0 1 ~ ~ ~ 0.3 10 0.3 0.05 20 force
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches 1..200 run particle dust 1 0 0 1 ~ ~ ~ 0.3 10 0.3 0.05 20 force
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches 100..200 run particle alexscaves:void_being_tendril ~ ~ ~ 1 0 1 100 1 force
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches 100..200 run particle alexscaves:black_vent_smoke ~ ~ ~ 0 0 0 0.08 1 force
+    # Continue scheduling if timer not finished
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches ..200 run schedule function my_transform:beam_effect 1t
+    
+    # Finish if timer passed
+    execute as @a[tag=transforming] at @s if score @s transform_timer matches 201.. run function my_transform:finish
+function my_transform:aura_loop:
+    execute as @a[tag=aura_on] at @s run particle dust 0 0 0 1 ~ ~1 ~ 0.5 1 0.5 0.1 10 force
+    schedule function my_transform:aura_loop 2t
+
+function my_transform:finish:
+
+    # 1. Clean up the aura beam
+    fill ~-3 ~ ~-3 ~3 ~20 ~3 air replace minecraft:light
+
+    # 2. Start looping aura particles
+    function my_transform:aura_loop
+
+    tag @s add aura_on
+
+    # 3. Play sound and burst particles once
+    playsound minecraft:entity.ender_dragon.growl player @s
+    particle end_rod ~ ~1 ~ 0.3 1 0.3 0.01 50 force
+    
+    # 4. Remove transforming tag (if you want to allow stopping)
+    tag @s remove transforming
+
+function my_transform:revert:
+    tag @s remove aura_on
+    scoreboard players reset @s transform_timer
+
+function chaos_transform:start:
+    scoreboard objectives add super_timer dummy
+    scoreboard players set @s super_timer 0
+    tag @s add transforming_super
+    execute as @a[tag=transforming_super] at @s run function chaos_transform:spawn_emeralds
+    schedule function chaos_transform:emerald_orbit 1t
+
+
+
+
+
+function chaos_transform:spawn_emeralds:
+    radius = 2.5
+    items = [
+        "minecraft:emerald",
+        "minecraft:diamond",
+        "illagerinvasion:hallowed_gem",
+        "stalwart_dungeons:chorundum",
+        "lost_aether_content:invincibility_gem",
+        "aether:ambrosium_shard",
+        "minecraft:lapis_lazuli"
+    ]
+    for i in range(7):
+        angle = i * (360 / 7)
+        x = round(radius * math.cos(math.radians(angle)), 3)
+        z = round(radius * math.sin(math.radians(angle)), 3)
+        item_type = items[i]
+        summon minecraft:item_display ~x ~1 ~z {
+            Tags:["chaos_emerald", f"emerald_{i}"],
+            transformation:{scale:[0.3f,0.3f,0.3f]},
+            item:{id:f"{item_type}",Count:1b}
+        }
+
+function chaos_transform:emerald_orbit:
+    # Orbit logic for Chaos Emeralds
+    execute as @a[tag=transforming_super] at @s run function chaos_transform:orbit_logic
+
+    # Increment timer and schedule again
+    execute as @a[tag=transforming_super] run scoreboard players add @s super_timer 1
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches ..60 run schedule function chaos_transform:emerald_orbit 1t
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 61.. run function chaos_transform:super_beam 
+    
+
+
+function chaos_transform:super_beam:
+    execute as @a[tag=transforming_super] run scoreboard players add @s super_timer 1
+    
+    fill ~-2 ~ ~-2 ~2 ~20 ~2 minecraft:light[level=15] replace air
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 61..100 run particle dust 1 1 0 5 ~ ~1 ~ 1 10 1 1000 50 force
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 61..100 run schedule function chaos_transform:super_beam 1t
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 98.. run kill @e[tag=chaos_emerald]
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 101.. run function chaos_transform:super_finish 
+
+function chaos_transform:super_finish:
+    
+    
+    fill ~-2 ~ ~-2 ~2 ~20 ~2 air replace minecraft:light
+
+    effect give @a[tag=transforming_super] glowing 999999 0 true
+    effect give @a[tag=transforming_super] speed 999999 2 true
+    effect give @a[tag=transforming_super] strength 999999 2 true
+    effect give @a[tag=transforming_super] resistance 999999 2 true
+    execute at @s run particle dust 1 1 0 1 ~ ~1 ~ 0.5 1 0.5 0.05 20 force
+
+    clear @s minecraft:emerald{display:{Name:'{"text":"Chaos Emerald","italic":false}'}} 1
+    item replace entity @s weapon.mainhand with minecraft:emerald{display:{Name:'{"text":"Chaos Emerald","italic":false}'},Enchantments:[{}],HideFlags:1,Tags:["chaos_emerald_item"]}
+
+    execute as @a[tag=transforming_super] at @s if score @s super_timer matches 101.. function chaos_transform:super_aura_loop
+    tag @s add super_sonic
+    tag @s remove transforming_super
+
+function chaos_transform:super_aura_loop:
+    execute as @a[tag=super_sonic] at @s run particle dust 1 1 0 1.67 ~ ~1 ~ 0.5 0.9 0.5 0.005 7 force
+    schedule function chaos_transform:super_aura_loop 2t
+
+function chaos_transform:revert:
+    tag @s remove super_sonic
+    effect clear @s
+    scoreboard players set TalesGnuBR super_timer 0
+    clear @s minecraft:emerald{display:{Name:'{"text":"Chaos Emerald","italic":false}'}} 1
+
+function chaos_transform:orbit_logic:
+    radius = 0.6
+
+    for frame in range(101):
+        execute as @a[tag=transforming_super] at @s if score @s super_timer matches frame:
+            for i in range(7):
+                angle = 2 * math.pi * (frame / 40) + i * (2 * math.pi / 7)
+                x = radius * math.cos(angle)
+                z = radius * math.sin(angle)
+
+                execute as @e[tag=chaos_emerald,tag=f"emerald_{i}",limit=1] at @s run tp @s ~x ~ ~z
+
+function chaos_transform:chaos_blast_trigger:
+    # Remove the Chaos Emerald from OFFHAND
+    clear @s minecraft:emerald{display:{Name:'{"text":"Chaos Emerald","italic":false}'}} 1
+    item replace entity @s weapon.mainhand with minecraft:emerald{display:{Name:'{"text":"Chaos Emerald","italic":false}'},Enchantments:[{}],HideFlags:1,Tags:["chaos_emerald_item"]}
+
+    advancement revoke @s only chaos_transform:chaos_blast_ftrigger
+    function chaos_transform:chaos_blast
+
+function chaos_transform:chaos_blast:
+    title @s actionbar {"text":"Chaos Spear!","color": "yellow"}
+
+    execute at @s anchored eyes positioned ^ ^0.2 ^0.2 run summon area_effect_cloud ~ ~ ~ {CustomName:'{"text":"ChaosSpear"}',Duration:46}
+    execute at @s anchored eyes positioned ^0.3 ^-0.3 ^0.2 run summon area_effect_cloud ~ ~ ~ {CustomName:'{"text":"ChaosSpear"}',Duration:46}
+    execute at @s anchored eyes positioned ^-0.55 ^-0.1 ^0.3 run summon area_effect_cloud ~ ~ ~ {CustomName:'{"text":"ChaosSpear"}',Duration:46}
+    execute as @e[type=area_effect_cloud,limit=3,sort=nearest,distance=..4,name="ChaosSpear"] at @s rotated as @p[tag=Spearshooter] run tp @s ~ ~ ~ ~ ~
+
+    execute as @e[type=area_effect_cloud,name="ChaosSpear"] at @s run function chaos_transform:chaos_spear1
+    playsound minecraft:entity.generic.explode player @s ~ ~ ~ 1 1
+    tag @s[tag=Spearshooter] remove Spearshooter
+function chaos_transform:chaos_spear1:
+    tp @s ^ ^ ^0.65
+    execute unless block ^ ^ ^0.65 #chaos_transform:passable run function chaos_transform:chaos_spear2
+
+    particle dust 1 1 0 1 ~ ~ ~ 0.1 0.1 0.1 0.001 2 force
+    execute positioned ~ ~-0.4 ~ at @e[type=!#chaos_transform:nalive,limit=1,distance=..2,tag=!Spearshooter] run function chaos_transform:chaos_spear2
+function chaos_transform:chaos_spear2:
+    summon creeper ~ ~ ~ {ExplosionRadius:2b,Fuse:0s,ignited:1b,Invulnerable:1b}
+    kill @s
